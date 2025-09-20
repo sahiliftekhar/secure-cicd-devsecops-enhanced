@@ -9,7 +9,7 @@ pipeline {
         DOCKER_COMPOSE = 'docker-compose -f docker-compose.yml'
         SONARQUBE_URL = 'http://localhost:9000'
         PROJECT_KEY = 'DevSecOps-Pipeline-Project'
-        SONAR_TOKEN = 'sqp_c010e820379f14f67ec1666c6867984d6b34db22' // Fixed token format
+        SONAR_TOKEN = 'squ_1943d5b371ee978a46918f1176333307e86b14fc' // Fixed token format
     }
 
     stages {
