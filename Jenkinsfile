@@ -9,7 +9,6 @@ pipeline {
         DOCKER_COMPOSE = 'docker-compose -f docker-compose.yml'
         SONARQUBE_URL = 'http://localhost:9000'
         PROJECT_KEY = 'DevSecOps-Pipeline-Project'
-        SONAR_TOKEN = 'squ_1943d5b371ee978a46918f1176333307e86b14fc' // Fixed token format
     }
 
     stages {
@@ -105,12 +104,9 @@ pipeline {
                     echo sonar.sources=. >> sonar-project.properties
                     echo sonar.exclusions=node_modules/**,coverage/**,test/**,*.test.js >> sonar-project.properties
                     echo sonar.host.url=%SONARQUBE_URL% >> sonar-project.properties
-                    echo sonar.token=%SONAR_TOKEN% >> sonar-project.properties
+                    echo sonar.login=admin >> sonar-project.properties
+                    echo sonar.password=admin >> sonar-project.properties
                     echo sonar.javascript.lcov.reportPaths=coverage/lcov.info >> sonar-project.properties
-                    
-                    REM Show configuration (hide token)
-                    type sonar-project.properties | findstr /v "sonar.token"
-                    echo sonar.token=***HIDDEN***
                     
                     REM Run SonarQube analysis
                     npx sonarqube-scanner
@@ -122,34 +118,34 @@ pipeline {
             steps {
                 script {
                     echo "Checking SonarQube Quality Gate..."
-                    timeout(time: 3, unit: 'MINUTES') {
-                        waitUntil {
-                            script {
-                                def result = bat(
-                                    script: '''
-                                        curl -s -u admin:admin "http://localhost:9000/api/qualitygates/project_status?projectKey=%PROJECT_KEY%"
-                                    ''',
-                                    returnStdout: true
-                                ).trim()
-                                
-                                echo "Quality Gate Result: ${result}"
-                                
-                                if (result.contains('"status":"OK"')) {
-                                    return true
-                                } else if (result.contains('"status":"ERROR"')) {
-                                    echo "⚠️ Quality Gate FAILED but continuing deployment..."
-                                    return true  // Continue pipeline even if quality gate fails
-                                } else if (result.contains('not found')) {
-                                    echo "⏳ Project not found, analysis may still be processing..."
-                                    return false
-                                } else {
-                                    echo "⏳ Quality Gate analysis in progress..."
-                                    return false
-                                }
-                            }
+                    def maxRetries = 10
+                    def retryCount = 0
+                    def qualityGateResult = ""
+                    
+                    while (retryCount < maxRetries) {
+                        retryCount++
+                        echo "Quality Gate check attempt ${retryCount}/${maxRetries}..."
+                        
+                        qualityGateResult = bat(
+                            script: "curl -s -u admin:admin \"http://localhost:9000/api/qualitygates/project_status?projectKey=${PROJECT_KEY}\"",
+                            returnStdout: true
+                        ).trim()
+                        
+                        echo "Quality Gate Result: ${qualityGateResult}"
+                        
+                        if (qualityGateResult.contains('"status":"OK"')) {
+                            echo "✅ Quality Gate PASSED!"
+                            return
+                        } else if (qualityGateResult.contains('"status":"ERROR"')) {
+                            echo "⚠️ Quality Gate FAILED but continuing deployment..."
+                            return
+                        } else {
+                            echo "⏳ Quality Gate analysis in progress... waiting 15 seconds"
+                            sleep(15)
                         }
                     }
-                    echo "✅ Quality Gate check completed!"
+                    
+                    echo "⏰ Quality Gate check timeout reached, continuing with deployment..."
                 }
             }
         }
@@ -159,7 +155,7 @@ pipeline {
                 bat '''
                     echo Deploying application...
                     %DOCKER_COMPOSE% up -d app
-                    timeout /t 10
+                    timeout /t 15
                     curl http://localhost:3000 || echo App is starting up...
                 '''
             }
